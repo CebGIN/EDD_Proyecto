@@ -253,27 +253,53 @@ public:
     bool isRightClickJustPressed() const override { return rClickJustPressed; }
 
     std::string getLineInput(Vec2 position) override {
-        // Temporarily restore canonical mode for line input
-        disableMouseTracking();
-        
-        struct termios lineMode;
-        tcgetattr(STDIN_FILENO, &lineMode);
-        lineMode.c_lflag |= (ECHO | ICANON);
-        lineMode.c_cc[VMIN] = 1;
-        lineMode.c_cc[VTIME] = 0;
-        tcsetattr(STDIN_FILENO, TCSAFLUSH, &lineMode);
-        
+        // Temporarily make read blocking to wait for user input
+        // This avoids mixing unbuffered read() with buffered std::cin
+        struct termios raw;
+        tcgetattr(STDIN_FILENO, &raw);
+        raw.c_cc[VMIN] = 1;
+        raw.c_cc[VTIME] = 0;
+        tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+
         setCursorPosition(position);
         setCursorVisible(true);
 
         std::string input;
-        std::getline(std::cin, input);
+        while (true) {
+            char c;
+            int n = read(STDIN_FILENO, &c, 1);
+            if (n <= 0) continue;
+
+            if (c == '\r' || c == '\n') {
+                break;
+            } else if (c == 127 || c == '\b') { // Backspace
+                if (!input.empty()) {
+                    input.pop_back();
+                    write(STDOUT_FILENO, "\b \b", 3);
+                }
+            } else if (c == '\x1b') {
+                // Ignore escape sequences (mouse wheel, clicks, arrows, etc.)
+                struct termios nonblock = raw;
+                nonblock.c_cc[VMIN] = 0;
+                tcsetattr(STDIN_FILENO, TCSANOW, &nonblock);
+                char discard;
+                while (read(STDIN_FILENO, &discard, 1) > 0) {}
+                tcsetattr(STDIN_FILENO, TCSANOW, &raw); // restore blocking
+            } else if (c >= 32 && c <= 126) {
+                input += c;
+                write(STDOUT_FILENO, &c, 1);
+            }
+        }
+
+        // Restore original raw mode (non-blocking)
+        raw.c_cc[VMIN] = 0;
+        tcsetattr(STDIN_FILENO, TCSANOW, &raw);
 
         setCursorVisible(false);
-
-        // Re-enable raw mode and mouse tracking
-        enableRawMode();
-        enableMouseTracking();
+        
+        // Drain any lingering events so they don't trigger engine shortcuts
+        char discard;
+        while (read(STDIN_FILENO, &discard, 1) > 0) {}
 
         return input;
     }

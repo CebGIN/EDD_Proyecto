@@ -154,11 +154,31 @@ public:
     bool isRightClickJustPressed() const override { return rClickJustPressed; }
 
     std::string getLineInput(Vec2 position) override {
-        std::string input;
+        // Temporarily disable mouse events and enable line input/echo
+        DWORD currentMode = 0;
+        GetConsoleMode(hStdin, &currentMode);
+        DWORD lineMode = currentMode;
+        lineMode &= ~ENABLE_MOUSE_INPUT;
+        lineMode |= (ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+        SetConsoleMode(hStdin, lineMode);
+
+        // Flush any pending mouse events so they don't interfere
+        FlushConsoleInputBuffer(hStdin);
+
         setCursorPosition(position);
         setCursorVisible(true);
+
+        std::string input;
         std::getline(std::cin, input);
+
         setCursorVisible(false);
+
+        // Restore engine mode (mouse input on, echo/line input off for raw processing)
+        SetConsoleMode(hStdin, currentMode);
+        
+        // Drain again to avoid accidental triggers
+        FlushConsoleInputBuffer(hStdin);
+
         return input;
     }
 };
