@@ -233,7 +233,11 @@ public:
                         parseSGRMouse(buf + start, i - start);
                     }
                 } else {
-                    i++; // Skip unknown byte
+                    // Store as last key pressed if it's a printable char or common control
+                    if (buf[i] >= 32 && buf[i] <= 126) {
+                        Input::lastChar = buf[i];
+                    }
+                    i++; // Skip byte
                 }
             }
         }

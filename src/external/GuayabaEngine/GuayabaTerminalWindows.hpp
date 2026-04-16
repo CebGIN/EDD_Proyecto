@@ -131,6 +131,14 @@ public:
                     if (mouseRec.dwEventFlags == MOUSE_MOVED) {
                         mousePos = {mouseRec.dwMousePosition.X, mouseRec.dwMousePosition.Y};
                     }
+                } else if (rec.EventType == KEY_EVENT) {
+                    KEY_EVENT_RECORD &keyRec = rec.Event.KeyEvent;
+                    if (keyRec.bKeyDown) {
+                        char c = keyRec.uChar.AsciiChar;
+                        if (c >= 32 && c <= 126) {
+                            Input::lastChar = c;
+                        }
+                    }
                 }
             }
             if (eventsAvailable > eventsRead) {

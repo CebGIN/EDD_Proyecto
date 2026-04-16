@@ -153,6 +153,7 @@ namespace Input {
     inline bool RClickPrev = false;
     inline bool LClickJustPressed = false;
     inline bool RClickJustPressed = false;
+    inline char lastChar = 0;
 
     inline void iniciateInput() {
         if (g_Terminal) g_Terminal->init();
@@ -160,6 +161,7 @@ namespace Input {
 
     inline void refresh_input() {
         if (!g_Terminal) return;
+        lastChar = 0;
         g_Terminal->pollEvents();
 
         LClickPrev = LClick;
