@@ -1,0 +1,45 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "C/C++: g++ build active file",
+            "command": "g++.exe",
+            "args": [
+                "-fdiagnostics-color=always",
+                "-g",
+                "-std=c++17",
+                "-Wall",
+                "-Wextra",
+                "-I${workspaceFolder}/src",
+                "-I${workspaceFolder}/src/external",
+                "${workspaceFolder}/src/main.cpp",
+                "${workspaceFolder}/src/csvReader/csvReader.cpp",
+                "${workspaceFolder}/src/mafiaFamily/mafiaTree.cpp",
+                "-o",
+                "${workspaceFolder}/bin/mafia_system.exe"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Compiler: g++.exe"
+        },
+        {
+            "label": "Run Project",
+            "type": "shell",
+            "command": "${workspaceFolder}/bin/mafia_system.exe",
+            "dependsOn": "C/C++: g++ build active file",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        }
+    ]
+}

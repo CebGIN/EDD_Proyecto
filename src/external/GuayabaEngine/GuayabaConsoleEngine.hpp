@@ -26,8 +26,17 @@ enum class NodeType{
 };
 
 // =====================================================================
-// 1. Cross-Platform Core Types
+// 1. Cross-Platform Core Types & Compatibility Macros
 // =====================================================================
+
+// Macro for inline variables (C++17) or fallback equivalents for older compilers
+#if __cplusplus >= 201703L
+    #define GUAYABA_INLINE_VAR inline
+#elif defined(_MSC_VER)
+    #define GUAYABA_INLINE_VAR __declspec(selectany)
+#else
+    #define GUAYABA_INLINE_VAR __attribute__((weak))
+#endif
 
 // Replaces Windows COORD
 struct Vec2 {
@@ -144,16 +153,16 @@ std::unique_ptr<IOSTerminal> CreateSystemTerminal();
 // =====================================================================
 
 namespace Input {
-    inline IOSTerminal* g_Terminal = nullptr;
+    GUAYABA_INLINE_VAR IOSTerminal* g_Terminal = nullptr;
 
-    inline Vec2 MousePos = {0, 0};
-    inline bool LClick = false;
-    inline bool RClick = false;
-    inline bool LClickPrev = false;
-    inline bool RClickPrev = false;
-    inline bool LClickJustPressed = false;
-    inline bool RClickJustPressed = false;
-    inline char lastChar = 0;
+    GUAYABA_INLINE_VAR Vec2 MousePos = {0, 0};
+    GUAYABA_INLINE_VAR bool LClick = false;
+    GUAYABA_INLINE_VAR bool RClick = false;
+    GUAYABA_INLINE_VAR bool LClickPrev = false;
+    GUAYABA_INLINE_VAR bool RClickPrev = false;
+    GUAYABA_INLINE_VAR bool LClickJustPressed = false;
+    GUAYABA_INLINE_VAR bool RClickJustPressed = false;
+    GUAYABA_INLINE_VAR char lastChar = 0;
 
     inline void iniciateInput() {
         if (g_Terminal) g_Terminal->init();

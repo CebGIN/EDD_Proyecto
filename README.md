@@ -11,10 +11,17 @@ Este proyecto implementa el sistema de sucesión para una familia de la mafia it
   - `external/`: Archivos base del motor y utilidades (`CGINDE.hpp`, `BinaryTree`).
 
 ## Compilación y Ejecución
-Se incluye un `Makefile` para facilitar la construcción en sistemas Linux.
-* **Para compilar**: Ejecuta el comando `make` en la raíz del proyecto.
-* **Para ejecutar**: Usa `make run` o `./bin/mafia_system`.
-* **Limpiar binarios**: `make clean`.
+### Windows
+Se han añadido varias herramientas para facilitar la compilación en Windows:
+*   **Batch**: Ejecuta `compile.bat` para una compilación rápida con `g++`.
+*   **VS Code**: Presiona `Ctrl+Shift+B` para compilar automáticamente usando la tarea configurada.
+*   **CMake**: Si tienes CMake instalado, puedes usar `cmake -B build` y `cmake --build build`.
+
+### Linux
+Se incluye un `Makefile` para facilitar la construcción:
+*   **Para compilar**: Ejecuta el comando `make` en la raíz del proyecto.
+*   **Para ejecutar**: Usa `make run` o `./bin/mafia_system`.
+*   **Limpiar binarios**: `make clean`.
 
 ## Interfaz Gráfica
 La interfaz gráfica en consola ofrece 4 opciones principales:
