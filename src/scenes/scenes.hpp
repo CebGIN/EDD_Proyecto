@@ -210,143 +210,188 @@ inline std::shared_ptr<Node> createModifyScene(AppState &state) {
 
   root->addChild(makeBanner("Modificar Miembro de la Familia"));
 
-  // Prompt for ID
+  // State to track if we've found the member and built the UI
+  struct ModState {
+    int memberId = -1;
+    bool found = false;
+    
+    // Temp values for edits
+    std::string name;
+    std::string lastName;
+    char gender;
+    int age;
+    bool isDead;
+    bool inJail;
+  };
+  auto mS = std::make_shared<ModState>();
+
   auto prompt = std::make_shared<NodePCT>(
       "Prompt", Vec2{2, 6}, "BRIGHT_WHITE", "BLACK",
       std::vector<std::string>{"  Ingresa el ID del miembro a modificar:"});
   root->addChild(prompt);
 
-  // We use the process callback to perform blocking input once the scene has
-  // had a chance to render at least once.
-  auto logicNode = std::make_shared<Node>("ModifyLogic");
-  auto frameWait = std::make_shared<int>(0);
-
-  // Debug label to show what's happening
   auto debugLabel = std::make_shared<NodePCT>(
-      "DebugLabel", Vec2{2, 30}, "BRIGHT_YELLOW", "BLACK",
-      std::vector<std::string>{"Status: Esperando para iniciar..."});
+      "DebugLabel", Vec2{2, 32}, "BRIGHT_YELLOW", "BLACK",
+      std::vector<std::string>{"Status: Esperando ID..."});
   root->addChild(debugLabel);
 
-  logicNode->setProcessFunction([&state, frameWait, debugLabel, root, logicNode](double) {
-    if ((*frameWait) < 2) {
-      (*frameWait)++;
-      return;
-    }
+  auto logicNode = std::make_shared<Node>("ModifyLogic");
+  
+  logicNode->setProcessFunction([&state, mS, root, debugLabel, prompt](double) {
+    if (mS->found) return;
 
-    // Now we can do blocking input
-    // --- Step 1: read ID ---
-    debugLabel->set_text({"Status: Ingresa ID en el prompt (arriba)..."});
+    // Wait 2 frames to ensure the banner and prompt are rendered
+    static int fWait = 0;
+    if (fWait < 2) { fWait++; return; }
+
+    // Sequential blocking input for ID Search (remains text)
     std::string idStr = Input::getLineInput({44, 6});
-    int memberId = -1;
-    try {
-        if (!idStr.empty()) memberId = std::stoi(idStr);
-    } catch (...) {
-        memberId = -1;
-    }
+    if (idStr.empty()) return;
 
-    debugLabel->set_text({"Status: Buscando ID " + std::to_string(memberId) + "..."});
-    FamilyMember *member = state.tree.findMemberById(memberId);
+    try { mS->memberId = std::stoi(idStr); } catch(...) { mS->memberId = -1; }
+
+    FamilyMember* member = state.tree.findMemberById(mS->memberId);
     if (!member) {
-      debugLabel->set_text({"Status: ERROR - ID " + std::to_string(memberId) + " no encontrado!"});
+      debugLabel->set_text({"Status: ERROR - ID " + std::to_string(mS->memberId) + " no encontrado!"});
       debugLabel->changeTextColor("BRIGHT_RED");
-      // Pause so user can see the error
-      Input::getLineInput({2, 32}); // Wait for enter
-      SceneManager::getInstance().changeScene(createMainMenu(state));
+      fWait = 0; 
       return;
     }
 
-    debugLabel->set_text({"Status: Modificando a " + member->name + " " + member->last_name});
-    debugLabel->changeTextColor("BRIGHT_GREEN");
+    // Found! Transition to interactive UI
+    mS->found = true;
+    mS->name = member->name;
+    mS->lastName = member->last_name;
+    mS->gender = member->gender;
+    mS->age = member->age;
+    mS->isDead = member->is_dead;
+    mS->inJail = member->in_jail;
 
-    // Update the field labels to show current data
-    std::vector<std::string> currentVals = {
-        member->name,
-        member->last_name,
-        std::string(1, member->gender),
-        std::to_string(member->age),
-        member->is_dead ? "1 (Si)" : "0 (No)",
-        member->in_jail ? "1 (Si)" : "0 (No)"
+    prompt->set_text({"  Editando Miembro (ID: " + std::to_string(mS->memberId) + "): " + mS->name + " " + mS->lastName});
+    prompt->changeTextColor("BRIGHT_GREEN");
+    debugLabel->set_text({"Status: Miembro encontrado. Haz clic en los botones para modificar."});
+    debugLabel->changeTextColor("BRIGHT_CYAN");
+
+    // Clear ID input area visually
+    root->addChild(std::make_shared<NodeBox>("ClearID", Vec2{44, 6}, Vec2{20, 1}, "BLACK"));
+
+    // --- Build editing UI ---
+    int y = 10;
+    auto addLabel = [&](const std::string& txt, int yPos) {
+        root->addChild(std::make_shared<NodePCT>("L_"+txt, Vec2{2, yPos}, "BRIGHT_WHITE", "BLACK", std::vector<std::string>{txt + ":"}));
     };
 
-    for (int i = 0; i < 6; ++i) {
-      auto fieldNode = std::dynamic_pointer_cast<NodePCT>(root->getChild(4 + i)); // Banner=0, Prompt=1, DebugLabel=2, LogicNode=3
-      if (fieldNode) {
-          std::string base = fieldNode->getText()[0];
-          // Replace "Enter = mantener actual" with the actual value if possible, or just append
-          fieldNode->set_text({base + "[" + currentVals[i] + "] "});
-          fieldNode->changeTextColor("BRIGHT_WHITE");
-      }
-    }
+    // 1. Name (Text Input)
+    addLabel("Nombre   ", y);
+    auto btnName = std::make_shared<NodeButton>("btnName", Vec2{15, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{" " + mS->name + " "});
+    btnName->setOnClick([mS, btnName, debugLabel]() {
+        debugLabel->set_text({"Status: Escribe el nuevo NOMBRE y pulsa ENTER..."});
+        debugLabel->changeTextColor("BRIGHT_YELLOW");
+        std::string res = Input::getLineInput(btnName->getGlobalPosition() + Vec2{1, 0});
+        if (!res.empty()) { mS->name = res; btnName->set_text({" " + mS->name + " "}); }
+        debugLabel->set_text({"Status: Nombre actualizado localmente."});
+        debugLabel->changeTextColor("BRIGHT_CYAN");
+    });
+    root->addChild(btnName);
+    y += 2;
 
-    // Wait one more frame to render the updated labels
-    (*frameWait) = 0;
-    logicNode->setProcessFunction([&state, memberId, member, debugLabel](double) {
-        // Nested lambda to continue after render
-        // Step 2: input values
-        auto getStr = [](Vec2 pos, const std::string &current) -> std::string {
-          std::string val = Input::getLineInput(pos);
-          return val.empty() ? current : val;
-        };
-        auto getIntOrKeep = [](Vec2 pos, int current) -> int {
-          std::string raw = Input::getLineInput(pos);
-          if (raw.empty()) return current;
-          try { return std::stoi(raw); } catch (...) { return current; }
-        };
+    // 2. Last Name (Text Input)
+    addLabel("Apellido ", y);
+    auto btnLast = std::make_shared<NodeButton>("btnLast", Vec2{15, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{" " + mS->lastName + " "});
+    btnLast->setOnClick([mS, btnLast, debugLabel]() {
+        debugLabel->set_text({"Status: Escribe el nuevo APELLIDO y pulsa ENTER..."});
+        debugLabel->changeTextColor("BRIGHT_YELLOW");
+        std::string res = Input::getLineInput(btnLast->getGlobalPosition() + Vec2{1, 0});
+        if (!res.empty()) { mS->lastName = res; btnLast->set_text({" " + mS->lastName + " "}); }
+        debugLabel->set_text({"Status: Apellido actualizado localmente."});
+        debugLabel->changeTextColor("BRIGHT_CYAN");
+    });
+    root->addChild(btnLast);
+    y += 2;
 
-        debugLabel->set_text({"Status: Ingresa nuevos datos o pulsa Enter para mantener los actuales."});
+    // 3. Gender (Selection Buttons - Fixed value)
+    addLabel("Genero   ", y);
+    auto btnH = std::make_shared<NodeButton>("btnH", Vec2{15, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{" [ Hombre (H) ] "});
+    auto btnM = std::make_shared<NodeButton>("btnM", Vec2{31, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{" [ Mujer (M) ] "});
+    auto updateG = [mS, btnH, btnM]() {
+        btnH->changeBackgroundColor(mS->gender == 'H' ? "BRIGHT_GREEN" : "BRIGHT_WHITE");
+        btnM->changeBackgroundColor(mS->gender == 'M' ? "BRIGHT_GREEN" : "BRIGHT_WHITE");
+    };
+    btnH->setOnClick([mS, updateG]() { mS->gender = 'H'; updateG(); });
+    btnM->setOnClick([mS, updateG]() { mS->gender = 'M'; updateG(); });
+    root->addChild(btnH);
+    root->addChild(btnM);
+    updateG();
+    y += 2;
 
-        std::string newName = getStr({55, 12}, member->name);
-        std::string newLast = getStr({55, 14}, member->last_name);
+    // 4. Age (Text Input)
+    addLabel("Edad     ", y);
+    auto btnAge = std::make_shared<NodeButton>("btnAge", Vec2{15, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{" " + std::to_string(mS->age) + " "});
+    btnAge->setOnClick([mS, btnAge, debugLabel]() {
+        debugLabel->set_text({"Status: Escribe la nueva EDAD y pulsa ENTER..."});
+        debugLabel->changeTextColor("BRIGHT_YELLOW");
+        std::string res = Input::getLineInput(btnAge->getGlobalPosition() + Vec2{1, 0});
+        if (!res.empty()) {
+            try { mS->age = std::stoi(res); btnAge->set_text({" " + std::to_string(mS->age) + " "}); } catch(...) {}
+        }
+        debugLabel->set_text({"Status: Edad actualizada localmente."});
+        debugLabel->changeTextColor("BRIGHT_CYAN");
+    });
+    root->addChild(btnAge);
+    y += 2;
 
-        std::string gStr = Input::getLineInput({55, 16});
-        char newGender = (gStr == "H" || gStr == "M") ? gStr[0] : member->gender;
+    // 5. Is Dead (Selection Buttons - Fixed value)
+    addLabel("Muerto?  ", y);
+    auto btnDeadSi = std::make_shared<NodeButton>("btnDSi", Vec2{15, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{"   SI   "});
+    auto btnDeadNo = std::make_shared<NodeButton>("btnDNo", Vec2{25, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{"   NO   "});
+    auto updateD = [mS, btnDeadSi, btnDeadNo]() {
+        btnDeadSi->changeBackgroundColor(mS->isDead ? "BRIGHT_RED" : "BRIGHT_WHITE");
+        btnDeadNo->changeBackgroundColor(!mS->isDead ? "BRIGHT_GREEN" : "BRIGHT_WHITE");
+    };
+    btnDeadSi->setOnClick([mS, updateD]() { mS->isDead = true; updateD(); });
+    btnDeadNo->setOnClick([mS, updateD]() { mS->isDead = false; updateD(); });
+    root->addChild(btnDeadSi);
+    root->addChild(btnDeadNo);
+    updateD();
+    y += 2;
 
-        int newAge = getIntOrKeep({55, 18}, member->age);
+    // 6. In Jail (Selection Buttons - Fixed value)
+    addLabel("Carcel?  ", y);
+    auto btnJailSi = std::make_shared<NodeButton>("btnJSi", Vec2{15, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{"   SI   "});
+    auto btnJailNo = std::make_shared<NodeButton>("btnJNo", Vec2{25, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{"   NO   "});
+    auto updateJ = [mS, btnJailSi, btnJailNo]() {
+        btnJailSi->changeBackgroundColor(mS->inJail ? "BRIGHT_RED" : "BRIGHT_WHITE");
+        btnJailNo->changeBackgroundColor(!mS->inJail ? "BRIGHT_GREEN" : "BRIGHT_WHITE");
+    };
+    btnJailSi->setOnClick([mS, updateJ]() { mS->inJail = true; updateJ(); });
+    btnJailNo->setOnClick([mS, updateJ]() { mS->inJail = false; updateJ(); });
+    root->addChild(btnJailSi);
+    root->addChild(btnJailNo);
+    updateJ();
+    y += 4;
 
-        std::string deadStr = Input::getLineInput({55, 20});
-        bool newDead = deadStr.empty() ? member->is_dead : (deadStr == "1");
-
-        std::string jailStr = Input::getLineInput({55, 22});
-        bool newJail = jailStr.empty() ? member->in_jail : (jailStr == "1");
-
-        state.tree.updateMember(memberId, newName, newLast, newGender, newAge,
-                                newDead, newJail);
-
+    // --- Footer Controls ---
+    auto btnSave = std::make_shared<NodeButton>("btnSave", Vec2{5, y}, "BLACK", "BRIGHT_YELLOW", std::vector<std::string>{"        [ GUARDAR CAMBIOS Y VOLVER ]        "});
+    btnSave->setOnClick([&state, mS]() {
+        state.tree.updateMember(mS->memberId, mS->name, mS->lastName, mS->gender, mS->age, mS->isDead, mS->inJail);
         SceneManager::getInstance().changeScene(createMainMenu(state));
     });
+    root->addChild(btnSave);
+
+    auto btnCancel = std::make_shared<NodeButton>("btnCancel", Vec2{50, y}, "BLACK", "BRIGHT_WHITE", std::vector<std::string>{"   [ CANCELAR ]   "});
+    btnCancel->setOnClick([&state]() {
+        SceneManager::getInstance().changeScene(createMainMenu(state));
+    });
+    root->addChild(btnCancel);
   });
   root->addChild(logicNode);
 
-  // Fields display (static labels — the blocking input will overlay them)
-  std::vector<std::string> fields = {
-      "  Nombre       (Enter = mantener actual): ",
-      "  Apellido     (Enter = mantener actual): ",
-      "  Genero H/M   (Enter = mantener actual): ",
-      "  Edad         (Enter = mantener actual): ",
-      "  Esta muerto? 0/1 (Enter = mantener):   ",
-      "  En carcel?   0/1 (Enter = mantener):   ",
-  };
-  int yPos = 12;
-  for (size_t i = 0; i < fields.size(); ++i) {
-    root->addChild(std::make_shared<NodePCT>(
-        "Field" + std::to_string(i), Vec2{2, yPos}, "BRIGHT_CYAN", "BLACK",
-        std::vector<std::string>{fields[i]}));
-    yPos += 2;
-  }
-
-  auto btnBack = std::make_shared<NodeButton>(
-      "BtnBack", Vec2{5, 56}, "BLACK", "BRIGHT_WHITE",
-      std::vector<std::string>{"  [M] Volver al menu  "});
-  btnBack->setOnClick([&state]() {
-    SceneManager::getInstance().changeScene(createMainMenu(state));
-  });
-  // Handle 'M' key
+  // Main menu shortcut
   root->setProcessFunction([&state](double) {
     if (Input::lastChar == 'm' || Input::lastChar == 'M') {
       SceneManager::getInstance().changeScene(createMainMenu(state));
     }
   });
-  root->addChild(btnBack);
 
   return root;
 }
