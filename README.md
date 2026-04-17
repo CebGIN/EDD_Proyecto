@@ -11,7 +11,11 @@ Este proyecto implementa el sistema de sucesión para una familia de la mafia it
   - `external/`: Archivos base del motor y utilidades (`CGINDE.hpp`, `BinaryTree`).
 
 ## Compilación y Ejecución
+
+!Importante Para que los datos sean leídos correctamente se debe ejecutar la aplicación desde una terminal posicionada en la carpeta raíz del proyecto.
+
 ### Windows
+Nota: se requiere tener instalado g++ y CMake.
 Se han añadido varias herramientas para facilitar la compilación en Windows:
 *   **Batch**: Ejecuta `compile.bat` para una compilación rápida con `g++`.
 *   **VS Code**: Presiona `Ctrl+Shift+B` para compilar automáticamente usando la tarea configurada.
