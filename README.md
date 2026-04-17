@@ -1,6 +1,6 @@
 # Una Familia de la Mafia - Sistema de Sucesión
 
-Este proyecto implementa el sistema de sucesión para una familia de la mafia italiana. Utiliza una estructura de Árbol Binario y una Lista Enlazada propia, cumpliendo con los requisitos de no utilizar `std::vector` para el manejo principal de los datos. La interfaz es controlada mediante el GuayabaConsoleEngine.
+Este proyecto implementa el sistema de sucesión para una familia de la mafia italiana. Utiliza una estructura de Árbol Binario y una Lista Enlazada propia para el manejo principal de los datos. La interfaz es controlada mediante el motor gráfico en consola GuayabaConsoleEngine.
 
 ## Estructura del Proyecto
 - `bin/`: Contiene el archivo ejecutable `mafia_system` y los datos principales como `test_data.csv`.

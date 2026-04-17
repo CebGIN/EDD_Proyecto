@@ -155,11 +155,11 @@ void MafiaTree::buildFromList(const cde::LinkedList<FamilyMember>* members) {
 // =========================================================================
 
 void MafiaTree::getSuccessionLine(cde::LinkedList<FamilyMember>& out) const {
-    // Pre-order traversal — collects only ALIVE and NOT IN JAIL members.
+    // Pre-order traversal — collects only ALIVE members.
     struct Collector {
         static void collect(BTNode<FamilyMember>* n, cde::LinkedList<FamilyMember>& list) {
             if (!n) return;
-            if (!n->data.is_dead && !n->data.in_jail) {
+            if (!n->data.is_dead) {
                 list.push_back(n->data);
             }
             collect(n->left, list);
@@ -173,26 +173,26 @@ void MafiaTree::getSuccessionLine(cde::LinkedList<FamilyMember>& out) const {
 // Succession helpers (requirement 3)
 // =========================================================================
 
-BTNode<FamilyMember>* MafiaTree::findFirstAvailable(BTNode<FamilyMember>* node) const {
+BTNode<FamilyMember>* MafiaTree::findFirstAvailable(BTNode<FamilyMember>* node, bool ignoreJail) const {
     if (!node) return nullptr;
-    if (!node->data.is_dead && !node->data.in_jail) return node;
+    if (!node->data.is_dead && (ignoreJail || !node->data.in_jail)) return node;
 
-    BTNode<FamilyMember>* leftResult = findFirstAvailable(node->left);
+    BTNode<FamilyMember>* leftResult = findFirstAvailable(node->left, ignoreJail);
     if (leftResult) return leftResult;
 
-    return findFirstAvailable(node->right);
+    return findFirstAvailable(node->right, ignoreJail);
 }
 
-BTNode<FamilyMember>* MafiaTree::findNearestBossWithTwoSuccessors(BTNode<FamilyMember>* bossNode) const {
+BTNode<FamilyMember>* MafiaTree::findNearestBossWithTwoSuccessors(BTNode<FamilyMember>* bossNode, bool ignoreJail) const {
     // Walk up through parents, looking for an ancestor that has both left and right
-    // children, with at least one alive and free.
+    // children, with workable candidates on BOTH sides.
     BTNode<FamilyMember>* current = getParentOf(bossNode);
     while (current) {
         if (current->left && current->right) {
-            // Check if at least one side has a viable candidate
-            BTNode<FamilyMember>* candidate = findFirstAvailable(current->left);
-            if (!candidate) candidate = findFirstAvailable(current->right);
-            if (candidate) return current;
+            // Check if both sides have a workable candidate
+            BTNode<FamilyMember>* cLeft = findFirstAvailable(current->left, ignoreJail);
+            BTNode<FamilyMember>* cRight = findFirstAvailable(current->right, ignoreJail);
+            if (cLeft && cRight) return current;
         }
         current = getParentOf(current);
     }
@@ -209,101 +209,107 @@ void MafiaTree::evaluateSuccession() {
 
     FamilyMember& boss = bossNode->data;
 
-    // Check if succession must trigger:
-    //  - boss is dead, OR
-    //  - boss is in jail, OR
-    //  - boss is 70+ years old
+    // Check if succession must trigger
     bool mustReplace = boss.is_dead || boss.in_jail || boss.age >= 70;
     if (!mustReplace) return;
 
     BTNode<FamilyMember>* newBossNode = nullptr;
 
-    // Rule 3.1 — Boss has successors: pick first alive+free in its own sub-tree (left branch first).
-    if (bossNode->left || bossNode->right) {
-        newBossNode = findFirstAvailable(bossNode->left);
-        if (!newBossNode) newBossNode = findFirstAvailable(bossNode->right);
-    }
+    auto findProcess = [&](bool ignoreJail) -> BTNode<FamilyMember>* {
+        BTNode<FamilyMember>* potentialBoss = nullptr;
+        // Rule 3.1
+        if (bossNode->left || bossNode->right) {
+            potentialBoss = findFirstAvailable(bossNode->left, ignoreJail);
+            if (!potentialBoss) potentialBoss = findFirstAvailable(bossNode->right, ignoreJail);
+        }
 
-    // Rule 3.2/3.3 — No successors or none available: go to partner sub-tree from boss's parent.
-    if (!newBossNode) {
-        BTNode<FamilyMember>* grandParent = getParentOf(bossNode);
-        if (grandParent) {
-            // The "partner" of bossNode is the other child of grandParent.
-            BTNode<FamilyMember>* partner = (grandParent->left == bossNode)
-                                              ? grandParent->right
-                                              : grandParent->left;
-            if (partner) {
-                // Rule 3.3: if partner is alive+free and has no successors, partner becomes boss.
-                if (!partner->data.is_dead && !partner->data.in_jail
-                    && !partner->left && !partner->right) {
-                    newBossNode = partner;
-                } else {
-                    // Otherwise: first available in partner's sub-tree.
-                    newBossNode = findFirstAvailable(partner->left);
-                    if (!newBossNode) newBossNode = findFirstAvailable(partner->right);
-                    // Rule 3.3 again: partner itself if available and no successors already checked.
-                    if (!newBossNode && !partner->data.is_dead && !partner->data.in_jail) {
-                        newBossNode = partner;
+        // Rule 3.2 & 3.3
+        if (!potentialBoss) {
+            BTNode<FamilyMember>* grandParent = getParentOf(bossNode);
+            if (grandParent) {
+                BTNode<FamilyMember>* partner = (grandParent->left == bossNode)
+                                                  ? grandParent->right
+                                                  : grandParent->left;
+                if (partner) {
+                    potentialBoss = findFirstAvailable(partner->left, ignoreJail);
+                    if (!potentialBoss) potentialBoss = findFirstAvailable(partner->right, ignoreJail);
+                    if (!potentialBoss && !partner->left && !partner->right
+                        && !partner->data.is_dead && (ignoreJail || !partner->data.in_jail)) {
+                        potentialBoss = partner;
                     }
                 }
             }
         }
-    }
 
-    // Rule 3.4 — Search in boss's grandparent's other branch.
-    if (!newBossNode) {
-        BTNode<FamilyMember>* grandParent = getParentOf(bossNode);
-        BTNode<FamilyMember>* greatGrandParent = grandParent ? getParentOf(grandParent) : nullptr;
-        if (greatGrandParent) {
-            BTNode<FamilyMember>* uncle = (greatGrandParent->left == grandParent)
-                                            ? greatGrandParent->right
-                                            : greatGrandParent->left;
-            if (uncle) {
-                newBossNode = findFirstAvailable(uncle->left);
-                if (!newBossNode) newBossNode = findFirstAvailable(uncle->right);
-                if (!newBossNode && !uncle->data.is_dead && !uncle->data.in_jail) {
-                    newBossNode = uncle;
+        // Rule 3.4
+        if (!potentialBoss) {
+            BTNode<FamilyMember>* grandParent = getParentOf(bossNode);
+            BTNode<FamilyMember>* greatGrandParent = grandParent ? getParentOf(grandParent) : nullptr;
+            if (greatGrandParent) {
+                BTNode<FamilyMember>* uncle = (greatGrandParent->left == grandParent)
+                                                ? greatGrandParent->right
+                                                : greatGrandParent->left;
+                if (uncle) {
+                    potentialBoss = findFirstAvailable(uncle->left, ignoreJail);
+                    if (!potentialBoss) potentialBoss = findFirstAvailable(uncle->right, ignoreJail);
+                    if (!potentialBoss && !uncle->left && !uncle->right
+                        && !uncle->data.is_dead && (ignoreJail || !uncle->data.in_jail)) {
+                        potentialBoss = uncle;
+                    }
                 }
             }
         }
-    }
 
-    // Rule 3.5 — Find nearest ancestor with two successors, pick from there.
-    if (!newBossNode) {
-        BTNode<FamilyMember>* ancestor = findNearestBossWithTwoSuccessors(bossNode);
-        if (ancestor) {
-            newBossNode = findFirstAvailable(ancestor->left);
-            if (!newBossNode) newBossNode = findFirstAvailable(ancestor->right);
+        // Rule 3.5
+        if (!potentialBoss) {
+            BTNode<FamilyMember>* ancestor = findNearestBossWithTwoSuccessors(bossNode, ignoreJail);
+            if (ancestor) {
+                potentialBoss = findFirstAvailable(ancestor->left, ignoreJail);
+                if (!potentialBoss) potentialBoss = findFirstAvailable(ancestor->right, ignoreJail);
+            }
         }
-    }
+        return potentialBoss;
+    };
 
-    // Rule 3.6 — All free candidates exhausted; try among jailed members.
+    newBossNode = findProcess(false);
+
     if (!newBossNode) {
-        // Re-run the same logic but ignoring the in_jail filter.
-        struct JailSearch {
+        struct GlobalFree {
             static BTNode<FamilyMember>* find(BTNode<FamilyMember>* n) {
                 if (!n) return nullptr;
-                if (!n->data.is_dead) return n; // alive, even if in jail
+                if (!n->data.is_dead && !n->data.in_jail) return n;
                 BTNode<FamilyMember>* l = find(n->left);
                 if (l) return l;
                 return find(n->right);
             }
         };
-        newBossNode = JailSearch::find(root);
+        newBossNode = GlobalFree::find(root);
     }
 
-    if (!newBossNode || newBossNode == bossNode) return; // nobody to promote
+    if (!newBossNode) {
+        newBossNode = findProcess(true);
+    }
 
-    // Demote old boss
+    if (!newBossNode) {
+        struct GlobalJail {
+            static BTNode<FamilyMember>* find(BTNode<FamilyMember>* n) {
+                if (!n) return nullptr;
+                if (!n->data.is_dead) return n;
+                BTNode<FamilyMember>* l = find(n->left);
+                if (l) return l;
+                return find(n->right);
+            }
+        };
+        newBossNode = GlobalJail::find(root);
+    }
+
+    if (!newBossNode || newBossNode == bossNode) return;
+
     boss.is_boss = false;
     if (!boss.is_dead) boss.was_boss = true;
 
-    // Promote new boss
     newBossNode->data.is_boss = true;
     newBossNode->data.was_boss = false;
-
-    // Rebuild parent map since tree topology did not change, but data did.
-    // (No topology change needed — we only updated data fields.)
 }
 
 // =========================================================================
@@ -327,8 +333,9 @@ bool MafiaTree::updateMember(int id,
     member->is_dead   = is_dead;
     member->in_jail   = in_jail;
 
-    // Age-out or jail rule: if the updated member is the boss, re-evaluate.
-    if (member->is_boss) {
+    // Evaluate succession if the updated member is the boss OR if the current boss is unfit
+    BTNode<FamilyMember>* bossNode = getBossNode();
+    if (member->is_boss || (bossNode && (bossNode->data.in_jail || bossNode->data.is_dead || bossNode->data.age >= 70))) {
         evaluateSuccession();
     }
 
@@ -350,4 +357,29 @@ void MafiaTree::toList(cde::LinkedList<FamilyMember>& out) const {
         }
     };
     Serializer::collect(root, out);
+}
+
+void MafiaTree::toIndentedList(cde::LinkedList<std::string>& out) const {
+    struct Indenter {
+        static void collect(BTNode<FamilyMember>* n, int depth, cde::LinkedList<std::string>& list) {
+            if (!n) return;
+            
+            std::string indent = "";
+            for (int i = 0; i < depth; ++i) {
+                indent += "  ";
+            }
+            
+            std::string status = "";
+            if (n->data.is_boss) status = " [BOSS]";
+            else if (n->data.is_dead) status = " [MUERTO]";
+            else if (n->data.in_jail) status = " [CARCEL]";
+
+            std::string line = indent + "|-- " + n->data.name + " " + n->data.last_name + " (ID: " + std::to_string(n->data.id) + ")" + status;
+            list.push_back(line);
+            
+            collect(n->left, depth + 1, list);
+            collect(n->right, depth + 1, list);
+        }
+    };
+    Indenter::collect(root, 0, out);
 }

@@ -17,6 +17,7 @@ struct AppState {
 // Forward declarations of scene-builder functions
 std::shared_ptr<Node> createMainMenu(AppState &state);
 std::shared_ptr<Node> createSuccessionScene(AppState &state);
+std::shared_ptr<Node> createTreeViewScene(AppState &state);
 std::shared_ptr<Node> createModifyScene(AppState &state);
 
 // Helper: render a centered title banner
@@ -53,16 +54,20 @@ inline std::shared_ptr<Node> createMainMenu(AppState &state) {
       std::vector<std::string>{"  [1] Ver linea de sucesion          "});
 
   auto btn2 = std::make_shared<NodeButton>(
-      "BtnModify", Vec2{5, 12}, "BLACK", "BRIGHT_CYAN",
-      std::vector<std::string>{"  [2] Modificar miembro de la familia"});
+      "BtnTreeView", Vec2{5, 12}, "BLACK", "BRIGHT_MAGENTA",
+      std::vector<std::string>{"  [2] Ver arbol completo (jerarquia) "});
 
   auto btn3 = std::make_shared<NodeButton>(
-      "BtnSave", Vec2{5, 14}, "BLACK", "BRIGHT_YELLOW",
-      std::vector<std::string>{"  [3] Guardar cambios al CSV         "});
+      "BtnModify", Vec2{5, 14}, "BLACK", "BRIGHT_CYAN",
+      std::vector<std::string>{"  [3] Modificar miembro de la familia"});
 
   auto btn4 = std::make_shared<NodeButton>(
-      "BtnExit", Vec2{5, 16}, "BLACK", "BRIGHT_RED",
-      std::vector<std::string>{"  [4] Salir                          "});
+      "BtnSave", Vec2{5, 16}, "BLACK", "BRIGHT_YELLOW",
+      std::vector<std::string>{"  [4] Guardar cambios al CSV         "});
+
+  auto btn5 = std::make_shared<NodeButton>(
+      "BtnExit", Vec2{5, 18}, "BLACK", "BRIGHT_RED",
+      std::vector<std::string>{"  [5] Salir                          "});
 
   // ── Button actions ───────────────────────────────────────────────────
   btn1->setOnClick([&state]() {
@@ -70,12 +75,17 @@ inline std::shared_ptr<Node> createMainMenu(AppState &state) {
   });
 
   btn2->setOnClick([&state]() {
+    if (!state.dataLoaded) return;
+    SceneManager::getInstance().changeScene(createTreeViewScene(state));
+  });
+
+  btn3->setOnClick([&state]() {
     if (!state.dataLoaded)
       return;
     SceneManager::getInstance().changeScene(createModifyScene(state));
   });
 
-  btn3->setOnClick([&state, statusLabel]() {
+  btn4->setOnClick([&state, statusLabel]() {
     if (!state.dataLoaded)
       return;
     cde::LinkedList<FamilyMember> list;
@@ -85,12 +95,13 @@ inline std::shared_ptr<Node> createMainMenu(AppState &state) {
     statusLabel->changeTextColor("BRIGHT_GREEN");
   });
 
-  btn4->setOnClick([]() { SceneManager::getInstance().stopRunning(); });
+  btn5->setOnClick([]() { SceneManager::getInstance().stopRunning(); });
 
   root->addChild(btn1);
   root->addChild(btn2);
   root->addChild(btn3);
   root->addChild(btn4);
+  root->addChild(btn5);
 
   // ── Keyboard shortcut handling via process function ───────────────────
   root->setProcessFunction([&state, statusLabel](double) {
@@ -98,8 +109,11 @@ inline std::shared_ptr<Node> createMainMenu(AppState &state) {
       SceneManager::getInstance().changeScene(createSuccessionScene(state));
     } else if (Input::lastChar == '2') {
       if (state.dataLoaded)
-        SceneManager::getInstance().changeScene(createModifyScene(state));
+        SceneManager::getInstance().changeScene(createTreeViewScene(state));
     } else if (Input::lastChar == '3') {
+      if (state.dataLoaded)
+        SceneManager::getInstance().changeScene(createModifyScene(state));
+    } else if (Input::lastChar == '4') {
       if (state.dataLoaded) {
         cde::LinkedList<FamilyMember> list;
         state.tree.toList(list);
@@ -108,7 +122,7 @@ inline std::shared_ptr<Node> createMainMenu(AppState &state) {
             {"Estado: Cambios guardados en " + state.csvPath});
         statusLabel->changeTextColor("BRIGHT_GREEN");
       }
-    } else if (Input::lastChar == '4') {
+    } else if (Input::lastChar == '5') {
       SceneManager::getInstance().stopRunning();
     }
   });
@@ -116,7 +130,7 @@ inline std::shared_ptr<Node> createMainMenu(AppState &state) {
   auto hint = std::make_shared<NodePCT>(
       "Hint", Vec2{2, 57}, "WHITE", "BLACK",
       std::vector<std::string>{
-          "Usa click del raton o los botones numerados [1-4] para navegar."});
+          "Usa click del raton o los botones numerados [1-5] para navegar."});
   root->addChild(hint);
 
   return root;
@@ -186,20 +200,75 @@ inline std::shared_ptr<Node> createSuccessionScene(AppState &state) {
     }
   }
 
-  // ── Back button ───────────────────────────────────────────────────────
+  auto btnBack = std::make_shared<NodeButton>(
+      "BtnBack", Vec2{60, 4}, "BLACK", "BRIGHT_RED",
+      std::vector<std::string>{"  [M] Volver al menu  "});
+  btnBack->setOnClick([&state]() {
+    SceneManager::getInstance().changeScene(createMainMenu(state));
+  });
+  root->addChild(btnBack);
+
+  // ── Back shortcut ───────────────────────────────────────────────────────
   root->setProcessFunction([&state](double) {
     if (Input::lastChar == 'm' || Input::lastChar == 'M') {
       SceneManager::getInstance().changeScene(createMainMenu(state));
     }
   });
 
+  return root;
+}
+
+// Scene 2.5 — Indented Tree View
+inline std::shared_ptr<Node> createTreeViewScene(AppState &state) {
+  auto root = std::make_shared<Node>("TreeViewScene");
+
+  root->addChild(makeBanner("Jerarquia Familiar Completa"));
+
+  if (!state.dataLoaded) {
+    root->addChild(std::make_shared<NodePCT>(
+        "NoData", Vec2{2, 6}, "BRIGHT_RED", "BLACK",
+        std::vector<std::string>{"  No hay datos cargados."}));
+  } else {
+    cde::LinkedList<std::string> indentedTree;
+    state.tree.toIndentedList(indentedTree);
+
+    int yPos = 6;
+    int sz = indentedTree.get_size();
+    for (int i = 0; i < sz && yPos < 54; ++i) {
+      std::string line = indentedTree.get(i);
+      
+      std::string color = "BRIGHT_WHITE";
+      if (line.find("[BOSS]") != std::string::npos) color = "BRIGHT_YELLOW";
+      else if (line.find("[MUERTO]") != std::string::npos) color = "BRIGHT_RED";
+      else if (line.find("[CARCEL]") != std::string::npos) color = "RED";
+
+      root->addChild(std::make_shared<NodePCT>("TreeRow" + std::to_string(i),
+                                               Vec2{2, yPos}, color, "BLACK",
+                                               std::vector<std::string>{line}));
+      ++yPos;
+    }
+
+    if (sz == 0) {
+      root->addChild(std::make_shared<NodePCT>(
+          "Empty", Vec2{2, yPos}, "BRIGHT_RED", "BLACK",
+          std::vector<std::string>{"  El arbol esta vacio."}));
+    }
+  }
+
   auto btnBack = std::make_shared<NodeButton>(
-      "BtnBack", Vec2{5, 56}, "BLACK", "BRIGHT_WHITE",
+      "BtnBack", Vec2{60, 4}, "BLACK", "BRIGHT_RED",
       std::vector<std::string>{"  [M] Volver al menu  "});
   btnBack->setOnClick([&state]() {
     SceneManager::getInstance().changeScene(createMainMenu(state));
   });
   root->addChild(btnBack);
+
+  // ── Back shortcut ───────────────────────────────────────────────────────
+  root->setProcessFunction([&state](double) {
+    if (Input::lastChar == 'm' || Input::lastChar == 'M') {
+      SceneManager::getInstance().changeScene(createMainMenu(state));
+    }
+  });
 
   return root;
 }
@@ -215,6 +284,8 @@ inline std::shared_ptr<Node> createModifyScene(AppState &state) {
     int memberId = -1;
     bool found = false;
     
+    int framesWait = 0;
+
     // Temp values for edits
     std::string name;
     std::string lastName;
@@ -231,9 +302,17 @@ inline std::shared_ptr<Node> createModifyScene(AppState &state) {
   root->addChild(prompt);
 
   auto debugLabel = std::make_shared<NodePCT>(
-      "DebugLabel", Vec2{2, 32}, "BRIGHT_YELLOW", "BLACK",
+      "DebugLabel", Vec2{2, 7}, "BRIGHT_YELLOW", "BLACK",
       std::vector<std::string>{"Status: Esperando ID..."});
   root->addChild(debugLabel);
+
+  auto btnBack = std::make_shared<NodeButton>(
+      "BtnBack", Vec2{60, 4}, "BLACK", "BRIGHT_RED",
+      std::vector<std::string>{"  [M] Volver al menu  "});
+  btnBack->setOnClick([&state]() {
+    SceneManager::getInstance().changeScene(createMainMenu(state));
+  });
+  root->addChild(btnBack);
 
   auto logicNode = std::make_shared<Node>("ModifyLogic");
   
@@ -241,8 +320,7 @@ inline std::shared_ptr<Node> createModifyScene(AppState &state) {
     if (mS->found) return;
 
     // Wait 2 frames to ensure the banner and prompt are rendered
-    static int fWait = 0;
-    if (fWait < 2) { fWait++; return; }
+    if (mS->framesWait < 2) { mS->framesWait++; return; }
 
     // Sequential blocking input for ID Search (remains text)
     std::string idStr = Input::getLineInput({44, 6});
@@ -254,7 +332,7 @@ inline std::shared_ptr<Node> createModifyScene(AppState &state) {
     if (!member) {
       debugLabel->set_text({"Status: ERROR - ID " + std::to_string(mS->memberId) + " no encontrado!"});
       debugLabel->changeTextColor("BRIGHT_RED");
-      fWait = 0; 
+      mS->framesWait = 0; 
       return;
     }
 
